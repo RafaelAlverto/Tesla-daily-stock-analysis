@@ -1,0 +1,66 @@
+import yfinance as yf
+import pandas as pd
+import pandas_datareader.data as web
+import statsmodels.api as sm
+import datetime
+
+# Download the data from Tesla 
+tesla = yf.download('TSLA', start='2015-01-01', end=datetime.date.today())
+
+# Calculation of the daily returns
+tesla['Returns'] = tesla['Adj Close'].pct_change()
+
+# Download Fama-French Factors from Kenneth French's website
+factors_daily = web.DataReader('F-F_Research_Data_Factors_daily', 'famafrench', start='2015-01-01')[0]
+factors_daily /= 100  # Scale to match stock returns format
+
+# Calculation of the excess returns for Tesla
+tesla['Excess Returns'] = tesla['Returns'] - factors_daily['RF']
+
+# Rename "Mkt-RF" to "Market" before combining
+factors_daily.rename(columns={'Mkt-RF': 'Market'}, inplace=True)
+
+# Combine Tesla data with the factors
+data = pd.concat([tesla['Excess Returns'], factors_daily[['Market', 'SMB', 'HML']], factors_daily['RF']], axis=1).dropna()
+
+# Download Carhart momentum factor
+momentum_factor = web.DataReader('F-F_Momentum_Factor_daily', 'famafrench', start='2015-01-01')[0]
+momentum_factor /= 100
+momentum_factor.rename(columns={'Mom   ': 'MOM'}, inplace=True)
+data = pd.concat([data, momentum_factor], axis=1).dropna()
+
+# Define function for regression and output
+def perform_regression(y, X, model_name):
+    X = sm.add_constant(X)  # adding a constant
+    model = sm.OLS(y, X).fit()
+    summary_str = model.summary().as_text().replace('const', 'Alpha')
+    alpha_value = model.params.get('const', 0)
+    alpha_pvalue = model.pvalues.get('const', 1)
+
+    # Check if alpha is statistically significant and positive
+    if alpha_value > 0 and alpha_pvalue < 0.05:
+        annualized_alpha = alpha_value * 252
+        print(f"This model displays an annualized alpha of {annualized_alpha:.5f} with {alpha_pvalue:.3f} level of significance.")
+    else:
+        print(f"This model does not display a statistically significant positive alpha.")
+
+    return summary_str
+
+#Regression results
+# CAPM Model
+print("CAPM Model Results:")
+capm_summary = perform_regression(data['Excess Returns'], data[['Market']], "CAPM")
+print(capm_summary)
+print("\n" * 2)  # Adding space
+
+# Fama-French 3-Factor Model
+print("Fama-French 3-Factor Model Results:")
+ff3_summary = perform_regression(data['Excess Returns'], data[['Market', 'SMB', 'HML']], "Fama-French 3-Factor")
+print(ff3_summary)
+print("\n" * 2)  # Adding space
+
+# Carhart Four-Factor Model
+print("Carhart Four-Factor Model Results:")
+carhart_summary = perform_regression(data['Excess Returns'], data[['Market', 'SMB', 'HML', 'MOM']], "Carhart Four-Factor")
+print(carhart_summary)
+print("\n" * 2)  # Adding space
