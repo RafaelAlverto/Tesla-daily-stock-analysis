@@ -5,7 +5,7 @@ import statsmodels.api as sm
 import datetime
 
 # Download the data from Tesla 
-tesla = yf.download('TSLA', start='2015-01-01', end=datetime.date.today())
+tesla = yf.download('TSLA', start='2018-01-01', end=datetime.date.today())
 
 # Calculation of the daily returns
 tesla['Returns'] = tesla['Adj Close'].pct_change()
